@@ -1,0 +1,82 @@
+<launch>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       barn_collect.launch — Data collection in a BARN world (headless).
+
+       Usage:
+         roslaunch reactive_robot barn_collect.launch \
+           world_file:=/root/BARN_dataset/BARN_dataset/world_files/world_0.world \
+           world_tag:=barn_0
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <arg name="world_file"   />
+  <arg name="world_tag"    default="barn_unknown"/>
+  <arg name="out_path"     default=""/>
+  <arg name="run_duration" default="90.0"/>
+  <arg name="max_vel"      default="0.65"/>
+  <arg name="max_angular"  default="2.84"/>
+
+  <param name="use_sim_time" value="true"/>
+
+  <!-- ── Gazebo headless ───────────────────────────────────────────────── -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name"   value="$(arg world_file)"/>
+    <arg name="paused"       value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui"          value="false"/>
+    <arg name="headless"     value="false"/>
+    <arg name="debug"        value="false"/>
+  </include>
+
+  <!-- ── TurtleBot3 Burger RGBD ─────────────────────────────────────────── -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder
+                  $(find reactive_robot_sim)/urdf/turtlebot3_burger_rgbd.urdf.xacro
+                  ground_truth:=false"/>
+  <!-- BARN worlds span x:[-4.5,0] y:[0,4.5]. Spawn at center. -->
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model"
+        args="-urdf -model turtlebot3_burger_rgbd
+              -x -2.0 -y 2.0 -z 0.1 -R 0 -P 0 -Y 0.0
+              -param robot_description"
+        output="screen"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher"
+        type="robot_state_publisher"/>
+
+  <!-- ── FGM-DWA Expert ─────────────────────────────────────────────────── -->
+  <node name="fgm_dwa_robot" pkg="reactive_robot" type="fgm_dwa_robot.py"
+        output="screen" required="true">
+    <param name="max_vel"           value="$(arg max_vel)"/>
+    <param name="max_angular"       value="$(arg max_angular)"/>
+    <param name="v_min_forward"     value="0.28"/>
+    <param name="gap_threshold"     value="0.30"/>
+    <param name="min_gap_width"     value="0.40"/>
+    <param name="predict_time"      value="1.2"/>
+    <param name="sim_dt"            value="0.1"/>
+    <param name="v_samples"         value="7"/>
+    <param name="w_samples"         value="15"/>
+    <param name="obstacle_weight"   value="1.30"/>
+    <param name="potential_d0"      value="1.20"/>
+    <param name="heading_weight"    value="2.00"/>
+    <param name="speed_weight"      value="0.80"/>
+    <param name="continuity_weight" value="0.25"/>
+    <param name="corridor_weight"   value="0.00"/>
+    <param name="max_linear_accel"  value="2.00"/>
+    <param name="max_angular_accel" value="8.00"/>
+    <param name="robot_radius"      value="0.12"/>
+    <param name="run_duration"      value="$(arg run_duration)"/>
+    <param name="wedge_front_dist"  value="0.18"/>
+    <param name="wedge_consecutive" value="5"/>
+    <param name="recover_seconds"   value="0.70"/>
+    <param name="recover_linear"    value="-0.13"/>
+  </node>
+
+  <!-- ── Data Collector ──────────────────────────────────────────────────── -->
+  <node name="collect_data" pkg="reactive_robot" type="collect_data.py"
+        output="screen">
+    <param name="n_sectors"   value="36"/>
+    <param name="max_vel"     value="$(arg max_vel)"/>
+    <param name="max_angular" value="$(arg max_angular)"/>
+    <param name="world_tag"   value="$(arg world_tag)"/>
+    <param if="$(eval out_path != '')" name="out_path" value="$(arg out_path)"/>
+  </node>
+
+</launch>

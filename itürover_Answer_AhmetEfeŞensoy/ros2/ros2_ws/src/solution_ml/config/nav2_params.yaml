@@ -1,0 +1,215 @@
+# nav2_params.yaml — ROS 1 move_base_params/teb_params/costmap_common_params/
+# local_costmap_params/global_costmap_params dosyalarının Nav2 karşılığı (ROS 2).
+#
+# ROS 1'de her biri ayrı bir dosya + <rosparam> ile move_base'e yüklenirdi.
+# Nav2'de tek bir birleşik parametre dosyası kullanılır; her ROS node'u kendi
+# üst seviye anahtarı altında yapılandırılır (controller_server, planner_server,
+# bt_navigator, vb.). costmap parametreleri artık controller_server /
+# planner_server altına gömülüdür (ayrı costmap node'u yoktur — Nav2 costmap'i
+# ilgili server içinde bir kütüphane olarak çalıştırır).
+#
+# Eşleme özeti:
+#   move_base_params.yaml          -> controller_server / bt_navigator genel ayarları
+#   teb_params.yaml (TebLocalPlannerROS) -> controller_server.FollowPath (teb_local_planner/TebLocalPlannerROS)
+#   costmap_common_params.yaml     -> her iki costmap'in ortak katmanları (obstacle_layer, inflation_layer)
+#   local_costmap_params.yaml      -> controller_server.local_costmap
+#   global_costmap_params.yaml     -> planner_server.global_costmap
+
+amcl:
+  ros__parameters:
+    use_sim_time: true
+    base_frame_id: "base_footprint"
+    odom_frame_id: "odom"
+    global_frame_id: "map"
+    scan_topic: scan
+
+bt_navigator:
+  ros__parameters:
+    use_sim_time: true
+    global_frame: map
+    robot_base_frame: base_footprint
+    odom_topic: /odom
+    # ROS 1 move_base_params: oscillation_timeout/oscillation_distance karşılığı
+    # Nav2'de wait_for_service_timeout ve BT ağacı davranışına dağılmıştır.
+    default_nav_to_pose_bt_xml: ""
+
+controller_server:
+  ros__parameters:
+    use_sim_time: true
+    # ROS 1 move_base_params.controller_frequency
+    controller_frequency: 10.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.25
+      yaw_goal_tolerance: 0.25
+      stateful: true
+
+    # ── TEB yerel planlayıcı (ROS 1 teb_params.yaml TebLocalPlannerROS) ──────
+    FollowPath:
+      plugin: "teb_local_planner::TebLocalPlannerROS"
+      # Robot kinematics
+      max_vel_x: 0.90
+      max_vel_x_backwards: 0.05
+      max_vel_theta: 2.84
+      acc_lim_x: 0.8
+      acc_lim_theta: 3.0
+
+      # Trajectory smoothness
+      dt_ref: 0.2
+      dt_hysteresis: 0.08
+      min_samples: 3
+      max_samples: 20
+      global_plan_overwrite_orientation: true
+      max_global_plan_lookahead_dist: 2.0
+      feasibility_check_no_poses: 2
+
+      # Obstacle avoidance
+      min_obstacle_dist: 0.15
+      inflation_dist: 0.25
+      include_costmap_obstacles: true
+      costmap_obstacles_behind_robot_dist: 0.5
+      allow_init_with_backwards_motion: true
+      shrink_horizon_backup: true
+      shrink_horizon_min_samples: 3
+
+      # Footprint (circular — TurtleBot3 Burger)
+      footprint_model.type: "circular"
+      footprint_model.radius: 0.12
+
+      # Optimization weights
+      no_inner_iterations: 5
+      no_outer_iterations: 4
+      optimization_activate: true
+      optimization_verbose: false
+      penalty_epsilon: 0.04
+      weight_max_vel_x: 2.0
+      weight_max_vel_theta: 1.0
+      weight_acc_lim_x: 1.0
+      weight_acc_lim_theta: 1.0
+      weight_kinematics_nh: 1000.0
+      weight_kinematics_forward_drive: 5.0
+      weight_kinematics_turning_radius: 1.0
+      weight_optimaltime: 1.0
+      weight_obstacle: 50.0
+      weight_dynamic_obstacle: 10.0
+
+      # BARN dünyaları küçük — çoklu-homotopi kapalı (daha hızlı)
+      enable_homotopy_class_planning: false
+      enable_multithreading: true
+
+    # ROS 1 local_costmap_params.yaml — controller_server'ın kendi costmap'i.
+    local_costmap:
+      ros__parameters:
+        use_sim_time: true
+        global_frame: odom
+        robot_base_frame: base_footprint
+        update_frequency: 5.0
+        publish_frequency: 2.0
+        static_map: false
+        rolling_window: true
+        width: 4.0
+        height: 4.0
+        resolution: 0.05
+        robot_radius: 0.12
+        plugins: ["obstacle_layer", "inflation_layer"]
+        # costmap_common_params.yaml -> obstacle_layer
+        obstacle_layer:
+          plugin: "nav2_costmap_2d::ObstacleLayer"
+          enabled: true
+          observation_sources: scan
+          scan:
+            topic: /scan
+            sensor_frame: base_scan
+            data_type: "LaserScan"
+            marking: true
+            clearing: true
+            obstacle_max_range: 3.0
+            raytrace_max_range: 3.5
+        # costmap_common_params.yaml -> inflation_layer
+        inflation_layer:
+          plugin: "nav2_costmap_2d::InflationLayer"
+          enabled: true
+          inflation_radius: 0.18
+          cost_scaling_factor: 3.0
+
+planner_server:
+  ros__parameters:
+    use_sim_time: true
+    # ROS 1 move_base_params.planner_frequency / base_global_planner (navfn/NavfnROS)
+    planner_frequency: 2.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.5
+      use_astar: false
+      allow_unknown: true
+
+    # ROS 1 global_costmap_params.yaml — planner_server'ın kendi costmap'i.
+    global_costmap:
+      ros__parameters:
+        use_sim_time: true
+        global_frame: map
+        robot_base_frame: base_footprint
+        update_frequency: 1.0
+        publish_frequency: 0.5
+        static_map: false
+        rolling_window: true
+        width: 12.0
+        height: 12.0
+        resolution: 0.05
+        track_unknown_space: false
+        robot_radius: 0.12
+        plugins: ["obstacle_layer", "inflation_layer"]
+        obstacle_layer:
+          plugin: "nav2_costmap_2d::ObstacleLayer"
+          enabled: true
+          observation_sources: scan
+          scan:
+            topic: /scan
+            sensor_frame: base_scan
+            data_type: "LaserScan"
+            marking: true
+            clearing: true
+            obstacle_max_range: 3.0
+            raytrace_max_range: 3.5
+        inflation_layer:
+          plugin: "nav2_costmap_2d::InflationLayer"
+          enabled: true
+          inflation_radius: 0.18
+          cost_scaling_factor: 3.0
+
+behavior_server:
+  ros__parameters:
+    use_sim_time: true
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    behavior_plugins: ["spin", "backup", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    # ROS 1 move_base_params.oscillation_timeout/oscillation_distance karşılığı
+    # yaklaşık olarak buradaki backup/spin davranış limitlerine denk düşer.
+
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: true
+    max_velocity: [0.90, 0.0, 2.84]
+    min_velocity: [-0.05, 0.0, -2.84]
+    max_accel: [0.8, 0.0, 3.0]
+    max_decel: [-0.8, 0.0, -3.0]

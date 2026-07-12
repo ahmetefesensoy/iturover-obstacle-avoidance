@@ -1,0 +1,77 @@
+<launch>
+  <arg name="world_file"   />
+  <arg name="world_idx"    default="0"/>
+  <arg name="world_tag"    default="barn_unknown"/>
+  <arg name="out_path"     default=""/>
+  <arg name="run_duration" default="120.0"/>
+  <arg name="max_vel"      default="0.90"/>
+  <arg name="max_angular"  default="2.84"/>
+  <arg name="spawn_x"      default="-4.42"/>
+  <arg name="spawn_y"      default="3.98"/>
+
+  <param name="use_sim_time" value="true"/>
+
+  <!-- ── Gazebo headless ───────────────────────────────────────────────── -->
+  <include file="$(find gazebo_ros)/launch/empty_world.launch">
+    <arg name="world_name"   value="$(arg world_file)"/>
+    <arg name="paused"       value="false"/>
+    <arg name="use_sim_time" value="true"/>
+    <arg name="gui"          value="false"/>
+    <arg name="headless"     value="false"/>
+    <arg name="debug"        value="false"/>
+  </include>
+
+  <!-- ── TurtleBot3 Burger ────────────────────────────────────────────── -->
+  <param name="robot_description"
+         command="$(find xacro)/xacro --inorder
+                  $(find reactive_robot_sim)/urdf/turtlebot3_burger_rgbd.urdf.xacro
+                  ground_truth:=false"/>
+  <node name="spawn_urdf" pkg="gazebo_ros" type="spawn_model"
+        args="-urdf -model turtlebot3_burger_rgbd
+              -x $(arg spawn_x) -y $(arg spawn_y) -z 0.1 -R 0 -P 0 -Y 0.0
+              -param robot_description"
+        output="screen"/>
+  <node name="robot_state_publisher" pkg="robot_state_publisher"
+        type="robot_state_publisher"/>
+
+  <!-- ── map→odom static TF: offset = robot spawn so odom(0,0) maps to spawn pos ── -->
+  <node name="map_odom_tf" pkg="tf" type="static_transform_publisher"
+        args="$(arg spawn_x) $(arg spawn_y) 0 0 0 0 map odom 50"/>
+
+  <!-- ── odom→base_footprint TF (URDF has publishOdomTF=false) ──────────── -->
+  <node name="odom_to_tf" pkg="reactive_robot" type="odom_to_tf.py"
+        output="screen"/>
+
+  <!-- ── move_base + TEB ──────────────────────────────────────────────── -->
+  <node name="move_base" pkg="move_base" type="move_base" output="log">
+    <rosparam file="$(find reactive_robot)/config/move_base_params.yaml"      command="load"/>
+    <rosparam file="$(find reactive_robot)/config/teb_params.yaml"            command="load"/>
+    <rosparam file="$(find reactive_robot)/config/costmap_common_params.yaml" command="load" ns="global_costmap"/>
+    <rosparam file="$(find reactive_robot)/config/costmap_common_params.yaml" command="load" ns="local_costmap"/>
+    <rosparam file="$(find reactive_robot)/config/global_costmap_params.yaml" command="load"/>
+    <rosparam file="$(find reactive_robot)/config/local_costmap_params.yaml"  command="load"/>
+  </node>
+
+  <!-- ── Goal publisher ───────────────────────────────────────────────── -->
+  <node name="barn_goal_publisher" pkg="reactive_robot"
+        type="barn_goal_publisher.py" output="screen">
+    <param name="world_idx" value="$(arg world_idx)"/>
+  </node>
+
+  <!-- ── Shutdown timer (required=true → triggers launch shutdown) ──────── -->
+  <node name="shutdown_timer" pkg="reactive_robot" type="shutdown_timer.py"
+        output="screen" required="true">
+    <param name="duration" value="$(arg run_duration)"/>
+  </node>
+
+  <!-- ── Data Collector ───────────────────────────────────────────────── -->
+  <node name="collect_data" pkg="reactive_robot" type="collect_data.py"
+        output="screen">
+    <param name="n_sectors"   value="36"/>
+    <param name="max_vel"     value="$(arg max_vel)"/>
+    <param name="max_angular" value="$(arg max_angular)"/>
+    <param name="world_tag"   value="$(arg world_tag)"/>
+    <param if="$(eval out_path != '')" name="out_path" value="$(arg out_path)"/>
+  </node>
+
+</launch>

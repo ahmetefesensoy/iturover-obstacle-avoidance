@@ -1,0 +1,11 @@
+{
+  "pythonVersion": "3.8",
+  "extraPaths": [
+    "ituroveranswer/solution_ml/core",
+    "ituroveranswer/solution_ml/training",
+    "ituroveranswer/solution_ml/ros_nodes",
+    "ituroveranswer/solution_ml/testing"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingModuleSource": "none"
+}

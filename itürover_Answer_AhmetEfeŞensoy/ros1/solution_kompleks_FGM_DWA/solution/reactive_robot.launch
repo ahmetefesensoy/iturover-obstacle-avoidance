@@ -1,0 +1,231 @@
+<launch>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       FGM + DWA — Follow the Gap Method + Dynamic Window Approach
+       Checkpoint config: 14.20m net displacement, 0 wedges (verified live run)
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Simulation environment: started together with the node from this single
+       launch file, per assignment requirement ("Script'iniz ve simulasyon ortami
+       ayni anda launch dosyasi yardimiyla calistirilmalidir"). -->
+  <include file="$(find reactive_robot_sim)/launch/reactive_robot_sim.launch">
+    <arg name="gui"   value="true"/>
+    <arg name="rviz"  value="false"/>
+    <arg name="model" value="burger_rgbd"/>
+    <!-- p3d ground-truth odometry on /ground_truth_odom: telemetry only
+         (slip/collision detection); the node never uses it for control. -->
+    <arg name="ground_truth" value="true"/>
+  </include>
+
+  <!-- ── Core ─────────────────────────────────────────────────────────── -->
+  <arg name="max_vel"          default="0.40"/>
+  <arg name="max_angular"      default="2.84"/>
+  <arg name="v_min_forward"    default="0.24"/>
+  <arg name="gap_threshold"    default="0.30"/>
+  <arg name="min_gap_width"    default="0.40"/>
+  <arg name="predict_time"     default="1.2"/>
+  <arg name="sim_dt"           default="0.1"/>
+  <arg name="v_samples"        default="10"/>
+  <arg name="w_samples"        default="21"/>
+
+  <!-- ── DWA Weights ──────────────────────────────────────────────────── -->
+  <arg name="obstacle_weight"   default="1.30"/>
+  <arg name="potential_d0"      default="1.80"/>
+  <arg name="heading_weight"    default="2.40"/>
+  <arg name="speed_weight"      default="0.80"/>
+  <arg name="continuity_weight" default="0.25"/>
+  <arg name="corridor_weight"   default="0.40"/>
+  <arg name="lateral_weight"    default="0.15"/>
+  <arg name="bearing_smoothing_alpha" default="0.20"/>
+
+  <!-- ── Door-Commit (narrow-opening traversal state machine) ────────────
+       Sensory trigger: engages when the LiDAR sees the best gap narrower
+       than door_trigger_gap_width (sustained door_trigger_streak scans),
+       releases when it opens past door_release_gap_width. Map-agnostic —
+       replaces the old door_trigger_displacement odometry threshold. -->
+  <arg name="door_trigger_gap_width"    default="0.90"/>
+  <arg name="door_release_gap_width"    default="1.30"/>
+  <!-- "Light through the door": trigger/commit require deep returns
+       visible THROUGH the opening; commits abort if the depth vanishes. -->
+  <arg name="door_through_depth"        default="2.2"/>
+  <arg name="door_depth_margin"         default="1.3"/>
+  <arg name="door_min_light_width"      default="0.30"/>
+  <arg name="door_only_exit_frac"       default="0.15"/>
+  <arg name="door_align_speed"          default="0.60"/>
+  <arg name="door_align_gain"           default="1.8"/>
+  <arg name="door_align_max_w"          default="1.2"/>
+  <arg name="door_align_timeout"        default="5.0"/>
+  <arg name="door_retrigger_cooldown"   default="0.5"/>
+
+  <!-- Hard no-U-turn wall: DWA rejects trajectories ending beyond this
+       off-axis angle (heading measured by laser scan-matching). -->
+  <arg name="uturn_hard_deg"            default="90.0"/>
+  <arg name="door_trigger_streak"       default="6"/>
+  <arg name="door_release_streak"       default="5"/>
+  <arg name="door_commit_front_dist"    default="0.85"/>
+  <arg name="door_exit_front_dist"      default="1.05"/>
+  <arg name="door_commit_speed"         default="0.55"/>
+  <arg name="door_center_gain"          default="1.1"/>
+  <arg name="door_center_max_w"         default="1.2"/>
+  <arg name="door_max_lock_bearing_deg" default="40.0"/>
+  <!-- Commit fires on the sensed gap bearing (robot frame), not odom yaw:
+       encoder yaw drifts with wheel slip and blocked every gate commit. -->
+  <arg name="door_commit_max_bearing_deg" default="25.0"/>
+  <arg name="door_commit_max_wz"        default="0.6"/>
+  <arg name="door_commit_timeout"       default="6.5"/>
+  <arg name="door_commit_max_world_off_deg" default="65.0"/>
+  <arg name="door_commit_abort_off_deg" default="78.0"/>
+  <arg name="door_stall_nudge_delay"    default="0.8"/>
+  <arg name="door_stall_front_dist"     default="0.25"/>
+  <arg name="door_stall_nudge_w"        default="0.9"/>
+  <!-- ── IFGM utility gap scoring (Hossain et al., JFR 2021) ─────────────
+       U = width + gap_align_weight * (pi - angle to corridor axis).
+       Replaces the old straight-ahead bias (gap_forward_bias). -->
+  <arg name="gap_align_weight"          default="0.45"/>
+  <!-- Planner arm: false = FGM-I direct steering (no DWA sampler). -->
+  <arg name="use_dwa"                   default="true"/>
+  <arg name="fgm_p_gain"                default="2.1"/>
+  <!-- Hybrid: FGM-I steering in open scenery, DWA when constricted. -->
+  <arg name="hybrid_mode"               default="true"/>
+  <arg name="hybrid_open_frac"          default="1.15"/>
+  <arg name="hybrid_close_frac"         default="0.90"/>
+  <!-- Weighted steering arbiter: FGM gap + door-light magnetism +
+       grid-BFS reachability scored in tandem each scan; agreeing
+       candidates blend, winner otherwise. -->
+  <arg name="use_arbiter"               default="true"/>
+  <arg name="use_grid_door"             default="true"/>
+  <!-- SWEEP: at a wall with no visible door, walk the wall (zigzag)
+       until one appears; DWA-regime only. -->
+  <arg name="sweep_mode"                default="true"/>
+  <arg name="sweep_speed"               default="0.40"/>
+  <arg name="sweep_heading_deg"         default="75.0"/>
+  <arg name="sweep_timeout"             default="20.0"/>
+  <arg name="sweep_max_flips"           default="5"/>
+  <arg name="sweep_period"              default="5.0"/>
+  <arg name="sweep_main_frac"           default="0.8"/>
+  <arg name="sweep_min_doors"           default="3"/>
+  <!-- Laser corridor centering: target-bearing bias toward the more open
+       side (deg per meter of side-clearance imbalance, capped). -->
+  <arg name="center_bias_gain"          default="12.0"/>
+  <arg name="center_bias_max_deg"       default="16.0"/>
+
+  <!-- ── Gap-selection hysteresis (anti-zigzag) ─────────────────────────
+       Incumbent gap keeps a score bonus (meters of gap width); a challenger
+       must beat it by this margin. 0.0 restores the pre-hysteresis picker. -->
+  <arg name="gap_keep_bonus"            default="0.35"/>
+  <arg name="gap_keep_match_deg"        default="20.0"/>
+
+  <!-- ── Dynamic DWA weighting (Sci Rep 2025 improved-DWA transfer) ─────
+       Near obstacles speed reward fades and heading/continuity double;
+       open space keeps the static baseline. 0.0 disables. -->
+  <arg name="weight_decay_dist"         default="1.1"/>
+
+  <!-- ── Velocity governor (outer speed envelope by front clearance) ────
+       Full speed above governor_full_dist of clearance, floor speed below
+       governor_floor_dist, linear in between. -->
+  <arg name="governor_full_dist"        default="1.6"/>
+  <arg name="governor_floor_dist"       default="0.5"/>
+
+  <!-- ── Conditional sprint (fast only when aligned and clear) ──────────
+       Cap lifts to sprint_vel when front_min > sprint_front_dist, the
+       smoothed bearing is within sprint_bearing_deg of dead-ahead and
+       |w| < sprint_max_w. sprint_vel <= max_vel disables. -->
+  <arg name="sprint_vel"                default="0.62"/>
+  <arg name="sprint_front_dist"         default="1.4"/>
+  <arg name="sprint_bearing_deg"        default="14.0"/>
+  <arg name="sprint_max_w"              default="0.5"/>
+
+  <!-- ── Accel & Robot ────────────────────────────────────────────────── -->
+  <arg name="max_linear_accel"  default="2.00"/>
+  <arg name="max_angular_accel" default="8.00"/>
+  <arg name="robot_radius"      default="0.12"/>
+  <arg name="run_duration"      default="60.0"/>
+  <arg name="wedge_front_dist"  default="0.24"/>
+  <arg name="wedge_consecutive" default="5"/>
+  <arg name="recover_seconds"   default="1.00"/>
+  <arg name="recover_linear"    default="-0.20"/>
+
+  <!-- ── Node ──────────────────────────────────────────────────────────── -->
+  <node name="reactive_robot" pkg="reactive_robot" type="reactive_robot.py"
+        output="screen" required="true">
+    <param name="max_vel"          value="$(arg max_vel)"/>
+    <param name="max_angular"      value="$(arg max_angular)"/>
+    <param name="v_min_forward"    value="$(arg v_min_forward)"/>
+    <param name="gap_threshold"    value="$(arg gap_threshold)"/>
+    <param name="min_gap_width"    value="$(arg min_gap_width)"/>
+    <param name="predict_time"     value="$(arg predict_time)"/>
+    <param name="sim_dt"           value="$(arg sim_dt)"/>
+    <param name="v_samples"        value="$(arg v_samples)"/>
+    <param name="w_samples"        value="$(arg w_samples)"/>
+    <param name="obstacle_weight"  value="$(arg obstacle_weight)"/>
+    <param name="potential_d0"     value="$(arg potential_d0)"/>
+    <param name="heading_weight"   value="$(arg heading_weight)"/>
+    <param name="speed_weight"     value="$(arg speed_weight)"/>
+    <param name="continuity_weight" value="$(arg continuity_weight)"/>
+    <param name="corridor_weight"  value="$(arg corridor_weight)"/>
+    <param name="lateral_weight"   value="$(arg lateral_weight)"/>
+    <param name="bearing_smoothing_alpha" value="$(arg bearing_smoothing_alpha)"/>
+    <param name="door_trigger_gap_width"    value="$(arg door_trigger_gap_width)"/>
+    <param name="door_release_gap_width"    value="$(arg door_release_gap_width)"/>
+    <param name="door_through_depth"        value="$(arg door_through_depth)"/>
+    <param name="door_depth_margin"         value="$(arg door_depth_margin)"/>
+    <param name="door_min_light_width"      value="$(arg door_min_light_width)"/>
+    <param name="door_only_exit_frac"       value="$(arg door_only_exit_frac)"/>
+    <param name="door_align_speed"          value="$(arg door_align_speed)"/>
+    <param name="door_align_gain"           value="$(arg door_align_gain)"/>
+    <param name="door_align_max_w"          value="$(arg door_align_max_w)"/>
+    <param name="door_align_timeout"        value="$(arg door_align_timeout)"/>
+    <param name="door_retrigger_cooldown"   value="$(arg door_retrigger_cooldown)"/>
+    <param name="uturn_hard_deg"            value="$(arg uturn_hard_deg)"/>
+    <param name="door_trigger_streak"       value="$(arg door_trigger_streak)"/>
+    <param name="door_release_streak"       value="$(arg door_release_streak)"/>
+    <param name="door_commit_front_dist"    value="$(arg door_commit_front_dist)"/>
+    <param name="door_exit_front_dist"      value="$(arg door_exit_front_dist)"/>
+    <param name="door_commit_speed"         value="$(arg door_commit_speed)"/>
+    <param name="door_center_gain"          value="$(arg door_center_gain)"/>
+    <param name="door_center_max_w"         value="$(arg door_center_max_w)"/>
+    <param name="door_max_lock_bearing_deg" value="$(arg door_max_lock_bearing_deg)"/>
+    <param name="door_commit_max_bearing_deg" value="$(arg door_commit_max_bearing_deg)"/>
+    <param name="door_commit_max_wz"        value="$(arg door_commit_max_wz)"/>
+    <param name="door_commit_timeout"       value="$(arg door_commit_timeout)"/>
+    <param name="door_commit_max_world_off_deg" value="$(arg door_commit_max_world_off_deg)"/>
+    <param name="door_commit_abort_off_deg" value="$(arg door_commit_abort_off_deg)"/>
+    <param name="door_stall_nudge_delay"    value="$(arg door_stall_nudge_delay)"/>
+    <param name="door_stall_front_dist"     value="$(arg door_stall_front_dist)"/>
+    <param name="door_stall_nudge_w"        value="$(arg door_stall_nudge_w)"/>
+    <param name="gap_align_weight"          value="$(arg gap_align_weight)"/>
+    <param name="use_dwa"                   value="$(arg use_dwa)"/>
+    <param name="fgm_p_gain"                value="$(arg fgm_p_gain)"/>
+    <param name="hybrid_mode"               value="$(arg hybrid_mode)"/>
+    <param name="hybrid_open_frac"          value="$(arg hybrid_open_frac)"/>
+    <param name="hybrid_close_frac"         value="$(arg hybrid_close_frac)"/>
+    <param name="use_arbiter"               value="$(arg use_arbiter)"/>
+    <param name="use_grid_door"             value="$(arg use_grid_door)"/>
+    <param name="sweep_mode"                value="$(arg sweep_mode)"/>
+    <param name="sweep_speed"               value="$(arg sweep_speed)"/>
+    <param name="sweep_heading_deg"         value="$(arg sweep_heading_deg)"/>
+    <param name="sweep_timeout"             value="$(arg sweep_timeout)"/>
+    <param name="sweep_max_flips"           value="$(arg sweep_max_flips)"/>
+    <param name="sweep_period"              value="$(arg sweep_period)"/>
+    <param name="sweep_main_frac"           value="$(arg sweep_main_frac)"/>
+    <param name="sweep_min_doors"           value="$(arg sweep_min_doors)"/>
+    <param name="center_bias_gain"          value="$(arg center_bias_gain)"/>
+    <param name="center_bias_max_deg"       value="$(arg center_bias_max_deg)"/>
+    <param name="gap_keep_bonus"            value="$(arg gap_keep_bonus)"/>
+    <param name="gap_keep_match_deg"        value="$(arg gap_keep_match_deg)"/>
+    <param name="weight_decay_dist"         value="$(arg weight_decay_dist)"/>
+    <param name="governor_full_dist"        value="$(arg governor_full_dist)"/>
+    <param name="governor_floor_dist"       value="$(arg governor_floor_dist)"/>
+    <param name="sprint_vel"                value="$(arg sprint_vel)"/>
+    <param name="sprint_front_dist"         value="$(arg sprint_front_dist)"/>
+    <param name="sprint_bearing_deg"        value="$(arg sprint_bearing_deg)"/>
+    <param name="sprint_max_w"              value="$(arg sprint_max_w)"/>
+    <param name="max_linear_accel" value="$(arg max_linear_accel)"/>
+    <param name="max_angular_accel" value="$(arg max_angular_accel)"/>
+    <param name="robot_radius"     value="$(arg robot_radius)"/>
+    <param name="run_duration"     value="$(arg run_duration)"/>
+    <param name="wedge_front_dist" value="$(arg wedge_front_dist)"/>
+    <param name="wedge_consecutive" value="$(arg wedge_consecutive)"/>
+    <param name="recover_seconds"  value="$(arg recover_seconds)"/>
+    <param name="recover_linear"   value="$(arg recover_linear)"/>
+  </node>
+</launch>

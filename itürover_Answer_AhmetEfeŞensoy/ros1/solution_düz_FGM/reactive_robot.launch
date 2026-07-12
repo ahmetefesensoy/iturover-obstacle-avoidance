@@ -1,0 +1,107 @@
+<launch>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       Follow the Gap Method (FGM) + Disparity Extender
+       Clean single-behavior reactive controller (no DWA / door-mode / memory).
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Simulation environment: started together with the node from this single
+       launch file, per assignment requirement ("Script'iniz ve simulasyon ortami
+       ayni anda launch dosyasi yardimiyla calistirilmalidir"). -->
+  <include file="$(find reactive_robot_sim)/launch/reactive_robot_sim.launch">
+    <arg name="gui"   value="true"/>
+    <arg name="rviz"  value="false"/>
+    <arg name="model" value="burger_rgbd"/>
+  </include>
+
+  <!-- ── Core ─────────────────────────────────────────────────────────── -->
+  <arg name="max_vel"        default="0.65"/>
+  <arg name="max_angular"    default="2.84"/>
+  <arg name="v_min_forward"  default="0.20"/>
+  <arg name="gap_threshold"  default="0.30"/>
+  <arg name="min_gap_width"  default="0.40"/>
+  <arg name="robot_radius"   default="0.12"/>
+
+  <!-- ── Steering & speed shaping ─────────────────────────────────────── -->
+  <arg name="steer_gain"     default="1.4"/>
+  <arg name="bearing_smoothing_alpha" default="0.50"/>
+  <arg name="gap_forward_bias" default="0.02"/>
+  <arg name="slow_down_dist" default="1.3"/>
+  <arg name="turn_slow_gain" default="0.55"/>
+
+  <!-- ── Motion smoothing (slew-rate + EMA on published v,w) ───────────── -->
+  <arg name="v_slew"       default="0.55"/>
+  <arg name="w_slew"       default="1.4"/>
+  <arg name="v_alpha"      default="0.22"/>
+  <arg name="w_alpha"      default="0.18"/>
+  <arg name="door_v_slew"  default="1.0"/>
+  <arg name="door_w_slew"  default="3.0"/>
+  <arg name="door_v_alpha" default="0.35"/>
+  <arg name="door_w_alpha" default="0.30"/>
+
+  <!-- ── Simple door-commit (drive through narrow-but-deep gaps) ───────── -->
+  <arg name="door_gap_half_deg"   default="40.0"/>
+  <arg name="door_min_depth"      default="1.0"/>
+  <arg name="door_near_dist"      default="1.8"/>
+  <arg name="door_max_bearing_deg" default="32.0"/>
+  <arg name="door_steer_gain"     default="1.0"/>
+  <arg name="door_commit_speed"   default="0.30"/>
+  <arg name="door_reach"          default="1.6"/>
+  <arg name="door_reached_dist"   default="0.5"/>
+  <arg name="door_exit_front"     default="1.0"/>
+  <arg name="door_min_progress"   default="1.3"/>
+  <arg name="door_stall_sec"      default="1.5"/>
+  <arg name="door_stall_min_move" default="0.15"/>
+  <arg name="door_cooldown_sec"   default="0.8"/>
+
+  <!-- ── Wedge recovery ───────────────────────────────────────────────── -->
+  <arg name="wedge_front_dist"  default="0.20"/>
+  <arg name="wedge_consecutive" default="4"/>
+  <arg name="recover_seconds"   default="0.60"/>
+  <arg name="recover_linear"    default="-0.14"/>
+  <arg name="recover_angular"   default="0.0"/>
+
+  <arg name="run_duration"   default="60.0"/>
+
+  <!-- ── Node ──────────────────────────────────────────────────────────── -->
+  <node name="reactive_robot" pkg="reactive_robot" type="reactive_robot.py"
+        output="screen" required="true">
+    <param name="max_vel"        value="$(arg max_vel)"/>
+    <param name="max_angular"    value="$(arg max_angular)"/>
+    <param name="v_min_forward"  value="$(arg v_min_forward)"/>
+    <param name="gap_threshold"  value="$(arg gap_threshold)"/>
+    <param name="min_gap_width"  value="$(arg min_gap_width)"/>
+    <param name="robot_radius"   value="$(arg robot_radius)"/>
+    <param name="steer_gain"     value="$(arg steer_gain)"/>
+    <param name="bearing_smoothing_alpha" value="$(arg bearing_smoothing_alpha)"/>
+    <param name="gap_forward_bias" value="$(arg gap_forward_bias)"/>
+    <param name="slow_down_dist" value="$(arg slow_down_dist)"/>
+    <param name="turn_slow_gain" value="$(arg turn_slow_gain)"/>
+    <param name="v_slew"       value="$(arg v_slew)"/>
+    <param name="w_slew"       value="$(arg w_slew)"/>
+    <param name="v_alpha"      value="$(arg v_alpha)"/>
+    <param name="w_alpha"      value="$(arg w_alpha)"/>
+    <param name="door_v_slew"  value="$(arg door_v_slew)"/>
+    <param name="door_w_slew"  value="$(arg door_w_slew)"/>
+    <param name="door_v_alpha" value="$(arg door_v_alpha)"/>
+    <param name="door_w_alpha" value="$(arg door_w_alpha)"/>
+    <param name="door_gap_half_deg"   value="$(arg door_gap_half_deg)"/>
+    <param name="door_min_depth"      value="$(arg door_min_depth)"/>
+    <param name="door_near_dist"      value="$(arg door_near_dist)"/>
+    <param name="door_max_bearing_deg" value="$(arg door_max_bearing_deg)"/>
+    <param name="door_steer_gain"     value="$(arg door_steer_gain)"/>
+    <param name="door_commit_speed"   value="$(arg door_commit_speed)"/>
+    <param name="door_reach"          value="$(arg door_reach)"/>
+    <param name="door_reached_dist"   value="$(arg door_reached_dist)"/>
+    <param name="door_exit_front"     value="$(arg door_exit_front)"/>
+    <param name="door_min_progress"   value="$(arg door_min_progress)"/>
+    <param name="door_stall_sec"      value="$(arg door_stall_sec)"/>
+    <param name="door_stall_min_move" value="$(arg door_stall_min_move)"/>
+    <param name="door_cooldown_sec"   value="$(arg door_cooldown_sec)"/>
+    <param name="wedge_front_dist"  value="$(arg wedge_front_dist)"/>
+    <param name="wedge_consecutive" value="$(arg wedge_consecutive)"/>
+    <param name="recover_seconds"   value="$(arg recover_seconds)"/>
+    <param name="recover_linear"    value="$(arg recover_linear)"/>
+    <param name="recover_angular"   value="$(arg recover_angular)"/>
+    <param name="run_duration"   value="$(arg run_duration)"/>
+  </node>
+</launch>

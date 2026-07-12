@@ -1,0 +1,19 @@
+# Satır sonlarını normalize et: repo'da LF, checkout'ta platforma göre
+* text=auto eol=lf
+
+# Windows script dosyaları CRLF ile kalmalı
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary olarak işaretle (diff/merge denenmesin)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.stl binary
+*.dae binary
+*.sdf.bak binary
+*.sdf.bak2 binary
+*.npz binary
+*.pt binary
+*.pth binary

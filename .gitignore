@@ -1,0 +1,95 @@
+# ============================================================
+#  Python
+# ============================================================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.pyright/
+pyrightconfig.local.json
+
+# ============================================================
+#  ROS 1 (catkin) / ROS 2 (colcon) build çıktıları
+# ============================================================
+build/
+build_isolated/
+devel/
+devel_isolated/
+install/
+install_isolated/
+log/
+logs/
+.catkin_workspace
+.catkin_tools/
+*.pyc
+
+# CMake / colcon ara çıktıları
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+*.o
+*.internal
+*.includecache
+*.cmake.stamp
+
+# ============================================================
+#  Eğitim verisi ve model ağırlıkları (büyük binary'ler)
+#  GitHub 100MB dosya limitini aşmamak için repoya dahil edilmez.
+# ============================================================
+datasets/
+datasets_v6/
+datasets_v8/
+datasets_v9/
+datasets_dagger/
+datasets_external/
+*.npz
+*.pt
+*.pth
+*.ckpt
+*.h5
+*.onnx
+*.tflite
+
+# ============================================================
+#  Çalışma zamanı çıktıları: telemetri, tarama dökümleri, konsol
+# ============================================================
+*.log
+telemetry_*.csv
+scan_dumps_*.csv
+console.log
+aggregate.csv
+batch_*/
+
+# ============================================================
+#  Yedek / geçici dosyalar
+# ============================================================
+*.bak
+*.bak2
+*.tmp
+*.swp
+*~
+
+# ============================================================
+#  IDE / OS
+# ============================================================
+.vscode/
+.idea/
+*.code-workspace
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ============================================================
+#  Boş klasörlerin git tarafından takip edilmesi için:
+#  logs/.gitkeep gibi dosyaları elle "git add -f" ile ekleyin.
+# ============================================================
+!.gitkeep

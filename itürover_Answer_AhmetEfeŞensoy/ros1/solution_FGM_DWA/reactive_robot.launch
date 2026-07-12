@@ -1,0 +1,124 @@
+<launch>
+  <!-- ═══════════════════════════════════════════════════════════════════════
+       FGM + DWA — Follow the Gap Method + Dynamic Window Approach
+       Checkpoint config: 14.20m net displacement, 0 wedges (verified live run)
+       ═══════════════════════════════════════════════════════════════════════ -->
+
+  <!-- Simulation environment: started together with the node from this single
+       launch file, per assignment requirement ("Script'iniz ve simulasyon ortami
+       ayni anda launch dosyasi yardimiyla calistirilmalidir"). -->
+  <include file="$(find reactive_robot_sim)/launch/reactive_robot_sim.launch">
+    <arg name="gui"   value="true"/>
+    <arg name="rviz"  value="false"/>
+    <arg name="model" value="burger_rgbd"/>
+  </include>
+
+  <!-- ── Core ─────────────────────────────────────────────────────────── -->
+  <arg name="max_vel"          default="0.65"/>
+  <arg name="max_angular"      default="2.84"/>
+  <arg name="v_min_forward"    default="0.28"/>
+  <arg name="gap_threshold"    default="0.30"/>
+  <arg name="min_gap_width"    default="0.40"/>
+  <arg name="predict_time"     default="1.2"/>
+  <arg name="sim_dt"           default="0.1"/>
+  <arg name="v_samples"        default="7"/>
+  <arg name="w_samples"        default="15"/>
+
+  <!-- ── DWA Weights ──────────────────────────────────────────────────── -->
+  <arg name="obstacle_weight"   default="1.30"/>
+  <arg name="potential_d0"      default="1.80"/>
+  <arg name="heading_weight"    default="1.50"/>
+  <arg name="speed_weight"      default="0.80"/>
+  <arg name="continuity_weight" default="1.00"/>
+  <arg name="corridor_weight"   default="0.40"/>
+  <arg name="lateral_weight"    default="0.35"/>
+  <arg name="bearing_smoothing_alpha" default="0.20"/>
+
+  <!-- ── Door-Commit (narrow-opening bearing-freeze state machine) ──────── -->
+  <arg name="door_trigger_displacement" default="13.5"/>
+  <arg name="door_commit_front_dist"    default="1.10"/>
+  <arg name="door_exit_front_dist"      default="1.45"/>
+  <arg name="door_commit_speed"         default="0.48"/>
+  <arg name="door_center_gain"          default="0.8"/>
+  <arg name="door_center_max_w"         default="0.9"/>
+  <arg name="door_max_lock_bearing_deg" default="15.0"/>
+  <arg name="door_commit_max_yaw_deg"   default="45.0"/>
+  <arg name="door_max_target_yaw_deg"   default="35.0"/>
+  <arg name="door_commit_max_wz"        default="0.6"/>
+  <arg name="door_commit_max_measured_wz" default="1.2"/>
+  <arg name="gap_forward_bias"          default="0.02"/>
+  <arg name="door_commit_timeout"       default="10.0"/>
+  <arg name="door_stall_check_sec"      default="2.0"/>
+  <arg name="door_stall_min_progress"   default="0.15"/>
+  <arg name="door_commit_confirm_ticks" default="3"/>
+
+  <!-- ── Obstacle Memory (blind-spot jamb centering during door-commit) ──── -->
+  <arg name="mem_min_range"      default="0.13"/>
+  <arg name="mem_max_range"      default="2.0"/>
+  <arg name="mem_ttl"            default="0.8"/>
+  <arg name="mem_center_trigger" default="0.9"/>
+  <arg name="mem_center_gain"    default="1.2"/>
+  <arg name="mem_center_max"     default="0.5"/>
+
+  <!-- ── Accel & Robot ────────────────────────────────────────────────── -->
+  <arg name="max_linear_accel"  default="2.00"/>
+  <arg name="max_angular_accel" default="8.00"/>
+  <arg name="robot_radius"      default="0.12"/>
+  <arg name="run_duration"      default="60.0"/>
+  <arg name="wedge_front_dist"  default="0.18"/>
+  <arg name="wedge_consecutive" default="5"/>
+  <arg name="recover_seconds"   default="0.70"/>
+  <arg name="recover_linear"    default="-0.13"/>
+
+  <!-- ── Node ──────────────────────────────────────────────────────────── -->
+  <node name="reactive_robot" pkg="reactive_robot" type="reactive_robot.py"
+        output="screen" required="true">
+    <param name="max_vel"          value="$(arg max_vel)"/>
+    <param name="max_angular"      value="$(arg max_angular)"/>
+    <param name="v_min_forward"    value="$(arg v_min_forward)"/>
+    <param name="gap_threshold"    value="$(arg gap_threshold)"/>
+    <param name="min_gap_width"    value="$(arg min_gap_width)"/>
+    <param name="predict_time"     value="$(arg predict_time)"/>
+    <param name="sim_dt"           value="$(arg sim_dt)"/>
+    <param name="v_samples"        value="$(arg v_samples)"/>
+    <param name="w_samples"        value="$(arg w_samples)"/>
+    <param name="obstacle_weight"  value="$(arg obstacle_weight)"/>
+    <param name="potential_d0"     value="$(arg potential_d0)"/>
+    <param name="heading_weight"   value="$(arg heading_weight)"/>
+    <param name="speed_weight"     value="$(arg speed_weight)"/>
+    <param name="continuity_weight" value="$(arg continuity_weight)"/>
+    <param name="corridor_weight"  value="$(arg corridor_weight)"/>
+    <param name="lateral_weight"   value="$(arg lateral_weight)"/>
+    <param name="bearing_smoothing_alpha" value="$(arg bearing_smoothing_alpha)"/>
+    <param name="door_trigger_displacement" value="$(arg door_trigger_displacement)"/>
+    <param name="door_commit_front_dist"    value="$(arg door_commit_front_dist)"/>
+    <param name="door_exit_front_dist"      value="$(arg door_exit_front_dist)"/>
+    <param name="door_commit_speed"         value="$(arg door_commit_speed)"/>
+    <param name="door_center_gain"          value="$(arg door_center_gain)"/>
+    <param name="door_center_max_w"         value="$(arg door_center_max_w)"/>
+    <param name="door_max_lock_bearing_deg" value="$(arg door_max_lock_bearing_deg)"/>
+    <param name="door_commit_max_yaw_deg"   value="$(arg door_commit_max_yaw_deg)"/>
+    <param name="door_max_target_yaw_deg"   value="$(arg door_max_target_yaw_deg)"/>
+    <param name="door_commit_max_wz"        value="$(arg door_commit_max_wz)"/>
+    <param name="door_commit_max_measured_wz" value="$(arg door_commit_max_measured_wz)"/>
+    <param name="gap_forward_bias"          value="$(arg gap_forward_bias)"/>
+    <param name="door_commit_timeout"       value="$(arg door_commit_timeout)"/>
+    <param name="door_stall_check_sec"      value="$(arg door_stall_check_sec)"/>
+    <param name="door_stall_min_progress"   value="$(arg door_stall_min_progress)"/>
+    <param name="door_commit_confirm_ticks" value="$(arg door_commit_confirm_ticks)"/>
+    <param name="mem_min_range"      value="$(arg mem_min_range)"/>
+    <param name="mem_max_range"      value="$(arg mem_max_range)"/>
+    <param name="mem_ttl"            value="$(arg mem_ttl)"/>
+    <param name="mem_center_trigger" value="$(arg mem_center_trigger)"/>
+    <param name="mem_center_gain"    value="$(arg mem_center_gain)"/>
+    <param name="mem_center_max"     value="$(arg mem_center_max)"/>
+    <param name="max_linear_accel" value="$(arg max_linear_accel)"/>
+    <param name="max_angular_accel" value="$(arg max_angular_accel)"/>
+    <param name="robot_radius"     value="$(arg robot_radius)"/>
+    <param name="run_duration"     value="$(arg run_duration)"/>
+    <param name="wedge_front_dist" value="$(arg wedge_front_dist)"/>
+    <param name="wedge_consecutive" value="$(arg wedge_consecutive)"/>
+    <param name="recover_seconds"  value="$(arg recover_seconds)"/>
+    <param name="recover_linear"   value="$(arg recover_linear)"/>
+  </node>
+</launch>

@@ -1,0 +1,38 @@
+<launch>
+
+  <!-- ── Simulation ─────────────────────────────────────────────────────── -->
+  <include file="$(find reactive_robot_sim)/launch/reactive_robot_sim.launch">
+    <arg name="gui"   value="true"/>
+    <arg name="rviz"  value="true"/>
+    <arg name="model" value="burger_rgbd"/>
+
+  </include>
+
+  <!-- ── Tunable parameters ─────────────────────────────────────────────── -->
+  <arg name="weights_path"   default=""/>
+  <arg name="n_sectors"      default="36"/>
+  <arg name="max_vel"        default="0.26"/>
+  <arg name="max_angular"    default="1.82"/>
+  <arg name="run_duration"   default="60.0"/>
+
+  <!-- Wedge-recovery safety constants (mirrors fgm_dwa_robot.launch defaults) -->
+  <arg name="wedge_front_dist"  default="0.20"/>
+  <arg name="wedge_consecutive" default="3"/>
+  <arg name="recover_seconds"   default="0.7"/>
+  <arg name="recover_linear"    default="-0.13"/>
+
+  <!-- ── Node ──────────────────────────────────────────────────────────── -->
+  <node name="ml_robot" pkg="reactive_robot" type="ml_robot.py"
+        output="screen" required="true">
+    <param name="weights_path"     value="$(arg weights_path)"/>
+    <param name="n_sectors"        value="$(arg n_sectors)"/>
+    <param name="max_vel"          value="$(arg max_vel)"/>
+    <param name="max_angular"      value="$(arg max_angular)"/>
+    <param name="run_duration"     value="$(arg run_duration)"/>
+    <param name="wedge_front_dist" value="$(arg wedge_front_dist)"/>
+    <param name="wedge_consecutive" value="$(arg wedge_consecutive)"/>
+    <param name="recover_seconds"  value="$(arg recover_seconds)"/>
+    <param name="recover_linear"   value="$(arg recover_linear)"/>
+  </node>
+
+</launch>

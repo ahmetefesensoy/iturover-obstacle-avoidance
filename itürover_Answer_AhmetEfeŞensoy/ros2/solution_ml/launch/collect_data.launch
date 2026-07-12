@@ -1,0 +1,18 @@
+<launch>
+
+  <include file="$(find reactive_robot)/launch/fgm_dwa_robot.launch"/>
+  <arg name="n_sectors"   default="36"/>
+  <arg name="max_vel"     default="0.26"/>
+  <arg name="max_angular" default="1.82"/>
+  <arg name="world_tag"   default="obs_corridor_world"/>
+  <arg name="out_path"    default=""/>
+  <node name="collect_data" pkg="reactive_robot" type="collect_data.py"
+        output="screen">
+    <param name="n_sectors"   value="$(arg n_sectors)"/>
+    <param name="max_vel"     value="$(arg max_vel)"/>
+    <param name="max_angular" value="$(arg max_angular)"/>
+    <param name="world_tag"   value="$(arg world_tag)"/>
+    <param if="$(eval out_path != '')" name="out_path" value="$(arg out_path)"/>
+  </node>
+
+</launch>

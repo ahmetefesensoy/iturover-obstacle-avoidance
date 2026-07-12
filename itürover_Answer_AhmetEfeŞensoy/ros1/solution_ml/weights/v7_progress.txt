@@ -1,0 +1,1 @@
+epoch=199/200 val_acc=0.872 time=14.7s

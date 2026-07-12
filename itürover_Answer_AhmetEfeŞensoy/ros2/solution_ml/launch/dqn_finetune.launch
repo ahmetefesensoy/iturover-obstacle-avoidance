@@ -1,0 +1,70 @@
+<launch>
+
+  <!-- ── Simulation ─────────────────────────────────────────────────────── -->
+  <include file="$(find reactive_robot_sim)/launch/reactive_robot_sim.launch">
+    <arg name="gui"   value="true"/>
+    <arg name="rviz"  value="false"/>
+    <arg name="model" value="burger_rgbd"/>
+  </include>
+
+  <!-- ── RL parameters ────────────────────────────────────────────────── -->
+  <arg name="init_weights"       default=""/>
+  <arg name="out_weights"        default=""/>
+  <arg name="n_sectors"          default="36"/>
+  <arg name="max_vel"            default="0.26"/>
+  <arg name="max_angular"        default="1.82"/>
+
+  <!-- Spawn pose (obs_corridor_world defaults) -->
+  <arg name="spawn_x"   default="0.0"/>
+  <arg name="spawn_y"   default="9.5"/>
+  <arg name="spawn_z"   default="0.0"/>
+  <arg name="spawn_yaw" default="-1.57"/>
+
+  <arg name="episode_max_steps"   default="600"/>
+  <arg name="replay_capacity"     default="10000"/>
+  <arg name="batch_size"          default="64"/>
+  <arg name="gamma"               default="0.99"/>
+  <arg name="lr"                  default="0.0005"/>
+  <arg name="epsilon_start"       default="0.5"/>
+  <arg name="epsilon_end"         default="0.05"/>
+  <arg name="epsilon_decay_eps"   default="200"/>
+  <arg name="update_freq"         default="4"/>
+  <arg name="target_sync_steps"   default="200"/>
+  <arg name="save_every_eps"      default="50"/>
+
+  <!-- Wedge backstop -->
+  <arg name="wedge_front_dist"    default="0.20"/>
+  <arg name="wedge_consecutive"   default="3"/>
+  <arg name="recover_seconds"     default="0.7"/>
+  <arg name="recover_linear"      default="-0.13"/>
+
+  <!-- ── Node ──────────────────────────────────────────────────────────── -->
+  <node name="dqn_finetune" pkg="reactive_robot" type="dqn_finetune.py"
+        output="screen">
+    <param name="init_weights"       value="$(arg init_weights)"/>
+    <param name="out_weights"        value="$(arg out_weights)"/>
+    <param name="n_sectors"          value="$(arg n_sectors)"/>
+    <param name="max_vel"            value="$(arg max_vel)"/>
+    <param name="max_angular"        value="$(arg max_angular)"/>
+    <param name="spawn_x"            value="$(arg spawn_x)"/>
+    <param name="spawn_y"            value="$(arg spawn_y)"/>
+    <param name="spawn_z"            value="$(arg spawn_z)"/>
+    <param name="spawn_yaw"          value="$(arg spawn_yaw)"/>
+    <param name="episode_max_steps"  value="$(arg episode_max_steps)"/>
+    <param name="replay_capacity"    value="$(arg replay_capacity)"/>
+    <param name="batch_size"         value="$(arg batch_size)"/>
+    <param name="gamma"              value="$(arg gamma)"/>
+    <param name="lr"                 value="$(arg lr)"/>
+    <param name="epsilon_start"      value="$(arg epsilon_start)"/>
+    <param name="epsilon_end"        value="$(arg epsilon_end)"/>
+    <param name="epsilon_decay_eps"  value="$(arg epsilon_decay_eps)"/>
+    <param name="update_freq"        value="$(arg update_freq)"/>
+    <param name="target_sync_steps"  value="$(arg target_sync_steps)"/>
+    <param name="save_every_eps"     value="$(arg save_every_eps)"/>
+    <param name="wedge_front_dist"   value="$(arg wedge_front_dist)"/>
+    <param name="wedge_consecutive"  value="$(arg wedge_consecutive)"/>
+    <param name="recover_seconds"    value="$(arg recover_seconds)"/>
+    <param name="recover_linear"     value="$(arg recover_linear)"/>
+  </node>
+
+</launch>
