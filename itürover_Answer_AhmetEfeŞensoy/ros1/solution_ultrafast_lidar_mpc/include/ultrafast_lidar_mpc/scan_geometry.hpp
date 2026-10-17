@@ -20,7 +20,6 @@ class ScanGeometry {
  public:
   explicit ScanGeometry(const ControllerConfig& config);
 
-  ScanFrame condition(const sensor_msgs::LaserScan& scan) const;
   void condition(const sensor_msgs::LaserScan& scan, ScanFrame& frame) const;
   static LineModel fitLine(const std::vector<Vec2>& points);
   static std::vector<std::size_t> rangeDiscontinuities(const ScanFrame& frame,

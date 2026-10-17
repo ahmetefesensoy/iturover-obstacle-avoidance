@@ -42,12 +42,6 @@ ScanPoint pointForRange(double range, double bearing) {
 
 ScanGeometry::ScanGeometry(const ControllerConfig& config) : config_(config) {}
 
-ScanFrame ScanGeometry::condition(const sensor_msgs::LaserScan& scan) const {
-  ScanFrame frame;
-  condition(scan, frame);
-  return frame;
-}
-
 void ScanGeometry::condition(const sensor_msgs::LaserScan& scan,
                              ScanFrame& frame) const {
   frame.stamp = scan.header.stamp.toSec();
