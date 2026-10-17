@@ -23,12 +23,20 @@ include_directories(
   ${EIGEN3_INCLUDE_DIRS}
 )
 
-add_library(ultrafast_lidar_core src/config.cpp)
+add_library(ultrafast_lidar_core
+  src/config.cpp
+  src/scan_geometry.cpp
+)
 target_link_libraries(ultrafast_lidar_core ${catkin_LIBRARIES})
 
 if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(test_config test/test_config.cpp)
   if(TARGET test_config)
     target_link_libraries(test_config ultrafast_lidar_core)
+  endif()
+
+  catkin_add_gtest(test_scan_geometry test/test_scan_geometry.cpp)
+  if(TARGET test_scan_geometry)
+    target_link_libraries(test_scan_geometry ultrafast_lidar_core)
   endif()
 endif()
