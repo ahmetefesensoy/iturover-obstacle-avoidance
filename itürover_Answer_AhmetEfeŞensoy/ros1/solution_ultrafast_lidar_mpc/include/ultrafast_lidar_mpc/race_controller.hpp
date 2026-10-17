@@ -23,6 +23,13 @@ struct ControllerOutput {
   double localization_sigma{0.0};
   bool plan_valid{false};
   bool gate_locked{false};
+  double estimated_velocity{0.0};
+  double match_confidence{0.0};
+  double gate_id{0.0};
+  double gate_confidence{0.0};
+  double minimum_clearance{0.0};
+  double candidate_count{0.0};
+  double planner_microseconds{0.0};
 };
 
 class RaceController {

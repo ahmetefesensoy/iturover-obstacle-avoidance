@@ -7,13 +7,14 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   geometry_msgs
+  std_msgs
 )
 find_package(Eigen3 REQUIRED)
 
 catkin_package(
   INCLUDE_DIRS include
   LIBRARIES ultrafast_lidar_core
-  CATKIN_DEPENDS roscpp sensor_msgs geometry_msgs
+  CATKIN_DEPENDS roscpp sensor_msgs geometry_msgs std_msgs
   DEPENDS EIGEN3
 )
 
@@ -36,7 +37,20 @@ add_library(ultrafast_lidar_core
 )
 target_link_libraries(ultrafast_lidar_core ${catkin_LIBRARIES})
 
+add_executable(ultrafast_lidar_mpc_node src/race_controller_node.cpp)
+target_link_libraries(ultrafast_lidar_mpc_node ultrafast_lidar_core ${catkin_LIBRARIES})
+
+install(TARGETS ultrafast_lidar_core ultrafast_lidar_mpc_node
+  ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+  RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+install(DIRECTORY config launch
+  DESTINATION ${CATKIN_PACKAGE_SHARE_DESTINATION}
+)
+
 if(CATKIN_ENABLE_TESTING)
+  find_package(rostest REQUIRED)
   catkin_add_gtest(test_config test/test_config.cpp)
   if(TARGET test_config)
     target_link_libraries(test_config ultrafast_lidar_core)
@@ -81,4 +95,10 @@ if(CATKIN_ENABLE_TESTING)
   if(TARGET test_race_controller)
     target_link_libraries(test_race_controller ultrafast_lidar_core)
   endif()
+
+  add_rostest(test/topic_contract.test)
 endif()
+
+catkin_install_python(PROGRAMS test/test_topic_contract.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)

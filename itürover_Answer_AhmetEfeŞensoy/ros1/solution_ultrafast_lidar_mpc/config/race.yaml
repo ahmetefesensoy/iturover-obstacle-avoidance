@@ -1,0 +1,26 @@
+robot_radius: 0.105
+static_margin: 0.018
+max_forward_latency: 0.12
+max_linear_accel: 1.0
+max_linear_decel: 1.0
+max_angular_accel: 8.0
+open_speed_command: 6.0
+control_rate_hz: 30.0
+scan_timeout: 0.22
+grid_size: 8.0
+grid_resolution: 0.025
+grid_history_seconds: 0.8
+trajectory_horizon: 2.0
+integration_dt: 0.025
+gate_width_min: 0.30
+gate_width_max: 0.60
+gate_min_confidence: 0.65
+end_wall_persistence_scans: 3
+
+# Documented fixed search/test contract values.
+coarse_curvature_count: 31
+refinement_velocity_count: 11
+refinement_curvature_count: 11
+gate_center_tolerance: 0.04
+high_speed_gate_normal_tolerance: 0.314159
+scan_matcher_minimum_inliers: 60

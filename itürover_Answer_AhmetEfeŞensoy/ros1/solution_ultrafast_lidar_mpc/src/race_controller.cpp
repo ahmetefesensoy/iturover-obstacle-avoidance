@@ -1,6 +1,7 @@
 #include "ultrafast_lidar_mpc/race_controller.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <utility>
 
@@ -150,11 +151,13 @@ ControllerOutput RaceController::onScan(const sensor_msgs::LaserScan& scan) {
   const double certified_cap =
       certifiedCapFromScan(current_frame_, config_, localization_sigma);
   PlanResult plan;
+  const auto planner_start = std::chrono::steady_clock::now();
   if (state_ != RaceState::BRAKE) {
     const PlannerInput input{motion_, grid_, structure, localization_sigma,
                              certified_cap, state_};
     plan = planner_.plan(input);
   }
+  const auto planner_end = std::chrono::steady_clock::now();
 
   if (state_ == RaceState::GATE_APPROACH && gate_lock_scans_ >= 2 &&
       structure.active_gate &&
@@ -196,6 +199,19 @@ ControllerOutput RaceController::onScan(const sensor_msgs::LaserScan& scan) {
   cached_output_.localization_sigma = localization_sigma;
   cached_output_.plan_valid = plan.valid;
   cached_output_.gate_locked = static_cast<bool>(structure.active_gate);
+  cached_output_.estimated_velocity = motion_.v;
+  cached_output_.match_confidence = motion_.confidence;
+  cached_output_.gate_id = structure.active_gate
+                               ? static_cast<double>(structure.active_gate->id)
+                               : 0.0;
+  cached_output_.gate_confidence =
+      structure.active_gate ? structure.active_gate->confidence : 0.0;
+  cached_output_.minimum_clearance = plan.minimum_clearance;
+  cached_output_.candidate_count =
+      static_cast<double>(plan.diagnostics.generated);
+  cached_output_.planner_microseconds =
+      std::chrono::duration<double, std::micro>(planner_end - planner_start)
+          .count();
   last_command_ = safety.command;
   last_scan_time_ = now;
   have_previous_scan_ = true;

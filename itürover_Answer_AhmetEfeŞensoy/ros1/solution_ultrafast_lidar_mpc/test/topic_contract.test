@@ -1,0 +1,6 @@
+<launch>
+  <node name="ultrafast_lidar_mpc" pkg="ultrafast_lidar_mpc"
+        type="ultrafast_lidar_mpc_node" output="screen" required="true"/>
+  <test test-name="production_topic_contract" pkg="ultrafast_lidar_mpc"
+        type="test_topic_contract.py" time-limit="20.0"/>
+</launch>
