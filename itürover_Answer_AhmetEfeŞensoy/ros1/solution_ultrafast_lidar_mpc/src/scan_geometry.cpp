@@ -11,13 +11,26 @@ bool isValidRange(float range, const sensor_msgs::LaserScan& scan) {
   return std::isfinite(range) && range >= scan.range_min && range <= scan.range_max;
 }
 
-double median(std::vector<double> values) {
-  std::sort(values.begin(), values.end());
-  const std::size_t middle = values.size() / 2U;
-  if (values.size() % 2U == 0U) {
-    return (values[middle - 1U] + values[middle]) / 2.0;
+double medianOfValidNeighbors(const sensor_msgs::LaserScan& scan,
+                              std::size_t previous_index, std::size_t index,
+                              std::size_t next_index) {
+  double values[3];
+  std::size_t count = 0U;
+  for (const std::size_t neighbor : {previous_index, index, next_index}) {
+    const float candidate = scan.ranges[neighbor];
+    if (isValidRange(candidate, scan)) {
+      values[count++] = static_cast<double>(candidate);
+    }
   }
-  return values[middle];
+  if (count == 1U) {
+    return values[0];
+  }
+  if (count == 2U) {
+    return (values[0] + values[1]) / 2.0;
+  }
+  const double minimum = std::min(values[0], std::min(values[1], values[2]));
+  const double maximum = std::max(values[0], std::max(values[1], values[2]));
+  return values[0] + values[1] + values[2] - minimum - maximum;
 }
 
 ScanPoint pointForRange(double range, double bearing) {
@@ -31,11 +44,22 @@ ScanGeometry::ScanGeometry(const ControllerConfig& config) : config_(config) {}
 
 ScanFrame ScanGeometry::condition(const sensor_msgs::LaserScan& scan) const {
   ScanFrame frame;
-  frame.stamp = scan.header.stamp.toSec();
-  frame.conservative_ranges.assign(scan.ranges.size(),
-                                   std::numeric_limits<double>::infinity());
+  condition(scan, frame);
+  return frame;
+}
 
+void ScanGeometry::condition(const sensor_msgs::LaserScan& scan,
+                             ScanFrame& frame) const {
+  frame.stamp = scan.header.stamp.toSec();
   const std::size_t count = scan.ranges.size();
+  frame.conservative_ranges.resize(count);
+  std::fill(frame.conservative_ranges.begin(), frame.conservative_ranges.end(),
+            std::numeric_limits<double>::infinity());
+  frame.collision_points.clear();
+  frame.fit_points.clear();
+  frame.collision_points.reserve(count);
+  frame.fit_points.reserve(count);
+
   for (std::size_t index = 0; index < count; ++index) {
     const float raw = scan.ranges[index];
     if (!isValidRange(raw, scan)) {
@@ -45,23 +69,14 @@ ScanFrame ScanGeometry::condition(const sensor_msgs::LaserScan& scan) const {
     const double raw_range = static_cast<double>(raw);
     frame.conservative_ranges[index] = raw_range;
 
-    std::vector<double> neighborhood;
-    neighborhood.reserve(3U);
-    for (const std::size_t neighbor : {((index + count - 1U) % count), index,
-                                       ((index + 1U) % count)}) {
-      const float candidate = scan.ranges[neighbor];
-      if (isValidRange(candidate, scan)) {
-        neighborhood.push_back(static_cast<double>(candidate));
-      }
-    }
-    const double fit_range = median(neighborhood);
+    const double fit_range = medianOfValidNeighbors(
+        scan, (index + count - 1U) % count, index, (index + 1U) % count);
     const double collision_range = std::min(raw_range, fit_range);
     const double bearing = static_cast<double>(scan.angle_min) +
                            static_cast<double>(index) * scan.angle_increment;
     frame.collision_points.push_back(pointForRange(collision_range, bearing));
     frame.fit_points.push_back(pointForRange(fit_range, bearing));
   }
-  return frame;
 }
 
 LineModel ScanGeometry::fitLine(const std::vector<Vec2>& points) {

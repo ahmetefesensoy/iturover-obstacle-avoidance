@@ -57,6 +57,46 @@ TEST(ScanGeometry, OmitsInvalidRaysFromBothPointStreams) {
   EXPECT_EQ(frame.fit_points.size(), 359U);
 }
 
+TEST(ScanGeometry, ExcludesOneInvalidNeighborFromMedian) {
+  auto msg = test::SyntheticScan::constant(9.0);
+  msg.ranges[99] = 1.0F;
+  msg.ranges[100] = 4.0F;
+  msg.ranges[101] = std::numeric_limits<float>::infinity();
+  const ScanFrame frame = ScanGeometry(ControllerConfig{}).condition(msg);
+  EXPECT_NEAR(frame.fit_points[100].range, 2.5, 1e-7);
+  EXPECT_NEAR(frame.collision_points[100].range, 2.5, 1e-7);
+}
+
+TEST(ScanGeometry, ExcludesBothInvalidNeighborsFromMedian) {
+  auto msg = test::SyntheticScan::constant(9.0);
+  msg.ranges[99] = std::numeric_limits<float>::infinity();
+  msg.ranges[100] = 4.0F;
+  msg.ranges[101] = std::numeric_limits<float>::infinity();
+  const ScanFrame frame = ScanGeometry(ControllerConfig{}).condition(msg);
+  ASSERT_EQ(frame.fit_points.size(), 358U);
+  ASSERT_EQ(frame.collision_points.size(), 358U);
+  EXPECT_NEAR(frame.fit_points[99].range, 4.0, 1e-7);
+  EXPECT_NEAR(frame.collision_points[99].range, 4.0, 1e-7);
+}
+
+TEST(ScanGeometry, ReusesPreallocatedFrameStorageAcrossScans) {
+  const auto msg = test::SyntheticScan::constant(2.0);
+  ScanGeometry geometry(ControllerConfig{});
+  ScanFrame reusable_frame;
+  geometry.condition(msg, reusable_frame);
+  const std::size_t range_capacity = reusable_frame.conservative_ranges.capacity();
+  const std::size_t collision_capacity = reusable_frame.collision_points.capacity();
+  const std::size_t fit_capacity = reusable_frame.fit_points.capacity();
+
+  for (int iteration = 0; iteration < 10; ++iteration) {
+    geometry.condition(msg, reusable_frame);
+  }
+
+  EXPECT_EQ(reusable_frame.conservative_ranges.capacity(), range_capacity);
+  EXPECT_EQ(reusable_frame.collision_points.capacity(), collision_capacity);
+  EXPECT_EQ(reusable_frame.fit_points.capacity(), fit_capacity);
+}
+
 }  // namespace
 }  // namespace ultrafast_lidar_mpc
 
