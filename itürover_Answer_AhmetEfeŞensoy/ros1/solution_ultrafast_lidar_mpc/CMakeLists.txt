@@ -25,6 +25,7 @@ include_directories(
 
 add_library(ultrafast_lidar_core
   src/config.cpp
+  src/planner.cpp
   src/rolling_grid.cpp
   src/scan_geometry.cpp
   src/scan_matcher.cpp
@@ -62,5 +63,10 @@ if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(test_trajectory test/test_trajectory.cpp)
   if(TARGET test_trajectory)
     target_link_libraries(test_trajectory ultrafast_lidar_core)
+  endif()
+
+  catkin_add_gtest(test_planner test/test_planner.cpp)
+  if(TARGET test_planner)
+    target_link_libraries(test_planner ultrafast_lidar_core)
   endif()
 endif()
