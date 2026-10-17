@@ -27,6 +27,7 @@ add_library(ultrafast_lidar_core
   src/config.cpp
   src/planner.cpp
   src/rolling_grid.cpp
+  src/safety_filter.cpp
   src/scan_geometry.cpp
   src/scan_matcher.cpp
   src/structural_perception.cpp
@@ -68,5 +69,10 @@ if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(test_planner test/test_planner.cpp)
   if(TARGET test_planner)
     target_link_libraries(test_planner ultrafast_lidar_core)
+  endif()
+
+  catkin_add_gtest(test_safety_filter test/test_safety_filter.cpp)
+  if(TARGET test_safety_filter)
+    target_link_libraries(test_safety_filter ultrafast_lidar_core)
   endif()
 endif()
