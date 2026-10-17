@@ -1,6 +1,7 @@
 #include "ultrafast_lidar_mpc/scan_matcher.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <limits>
@@ -12,7 +13,10 @@ constexpr double kPi = 3.14159265358979323846;
 constexpr double kTwoPi = 2.0 * kPi;
 constexpr double kHuberDelta = 0.08;
 constexpr double kInlierResidual = 0.20;
+constexpr double kSensorMinRange = 0.08;
+constexpr double kSensorMaxRange = 10.0;
 constexpr std::size_t kMinimumInliers = 60U;
+constexpr std::size_t kModeCapacity = 16U;
 
 struct AngularGrid {
   double angle_min{-kPi};
@@ -33,6 +37,20 @@ struct Candidate {
   double dy{0.0};
   double dyaw{0.0};
   Score score;
+};
+
+struct SearchBounds {
+  double min_dx{0.0};
+  double max_dx{0.0};
+  double min_dy{0.0};
+  double max_dy{0.0};
+  double min_yaw{0.0};
+  double max_yaw{0.0};
+};
+
+struct ModePool {
+  std::array<Candidate, kModeCapacity> candidates{};
+  std::size_t size{0U};
 };
 
 double clamp(double value, double low, double high) {
@@ -140,7 +158,11 @@ Score evaluate(const ScanFrame& previous, const ScanFrame& current,
     const double x = cosine * point.p.x - sine * point.p.y + dx;
     const double y = sine * point.p.x + cosine * point.p.y + dy;
     const double predicted_range = std::hypot(x, y);
-    if (!std::isfinite(predicted_range) || predicted_range <= 0.0) {
+    // A projected point outside the preceding scan's physical measurement
+    // interval carries no evidence. Penalising it against an angular bin can
+    // bias forward motion at the 10 m horizon.
+    if (!std::isfinite(predicted_range) || predicted_range < kSensorMinRange ||
+        predicted_range > kSensorMaxRange) {
       continue;
     }
     const std::size_t bin = angularBin(std::atan2(y, x), previous_grid);
@@ -156,10 +178,8 @@ Score evaluate(const ScanFrame& previous, const ScanFrame& current,
     if (std::abs(residual) <= kInlierResidual) {
       ++score.inliers;
       inlier_weight += weight;
-      if (std::abs(residual) <= kHuberDelta) {
-        squared_residual += weight * residual * residual;
-        rms_weight += weight;
-      }
+      squared_residual += weight * residual * residual;
+      rms_weight += weight;
     }
   }
 
@@ -199,38 +219,73 @@ bool betterCandidate(const Candidate& lhs, const Candidate& rhs) {
   return lhs.dyaw < rhs.dyaw;
 }
 
+bool sameMode(const Candidate& lhs, const Candidate& rhs) {
+  return std::hypot(lhs.dx - rhs.dx, lhs.dy - rhs.dy) < 0.06 &&
+         std::abs(wrapAngle(lhs.dyaw - rhs.dyaw)) < 0.0525;
+}
+
+void retainMode(const Candidate& candidate, ModePool* pool) {
+  if (pool == nullptr || !std::isfinite(candidate.score.cost)) {
+    return;
+  }
+  for (std::size_t index = 0U; index < pool->size; ++index) {
+    if (sameMode(candidate, pool->candidates[index])) {
+      if (betterCandidate(candidate, pool->candidates[index])) {
+        pool->candidates[index] = candidate;
+      }
+      return;
+    }
+  }
+  if (pool->size < pool->candidates.size()) {
+    pool->candidates[pool->size++] = candidate;
+    return;
+  }
+  std::size_t worst = 0U;
+  for (std::size_t index = 1U; index < pool->size; ++index) {
+    if (betterCandidate(pool->candidates[worst], pool->candidates[index])) {
+      worst = index;
+    }
+  }
+  if (betterCandidate(candidate, pool->candidates[worst])) {
+    pool->candidates[worst] = candidate;
+  }
+}
+
 Candidate searchBox(const ScanFrame& previous, const ScanFrame& current,
                     const AngularGrid& grid,
                     const std::vector<double>& point_weights, double center_dx,
-                    double center_dy, double center_yaw, double half_dx,
-                    double half_dy, double half_yaw, double step_dx,
+                    double center_dy, double center_yaw,
+                    const SearchBounds& bounds, double step_dx,
                     double step_dy, double step_yaw, std::size_t point_stride,
-                    double* second_cost) {
+                    ModePool* modes = nullptr) {
   Candidate best;
-  Candidate second;
-  const int dx_steps = static_cast<int>(std::ceil(half_dx / step_dx));
-  const int dy_steps = static_cast<int>(std::ceil(half_dy / step_dy));
-  const int yaw_steps = static_cast<int>(std::ceil(half_yaw / step_yaw));
-  for (int ix = -dx_steps; ix <= dx_steps; ++ix) {
+  const int min_ix = static_cast<int>(std::ceil((bounds.min_dx - center_dx) /
+                                                step_dx - 1e-12));
+  const int max_ix = static_cast<int>(std::floor((bounds.max_dx - center_dx) /
+                                                 step_dx + 1e-12));
+  const int min_iy = static_cast<int>(std::ceil((bounds.min_dy - center_dy) /
+                                                step_dy - 1e-12));
+  const int max_iy = static_cast<int>(std::floor((bounds.max_dy - center_dy) /
+                                                 step_dy + 1e-12));
+  const int min_it = static_cast<int>(std::ceil((bounds.min_yaw - center_yaw) /
+                                                step_yaw - 1e-12));
+  const int max_it = static_cast<int>(std::floor((bounds.max_yaw - center_yaw) /
+                                                 step_yaw + 1e-12));
+  for (int ix = min_ix; ix <= max_ix; ++ix) {
     const double dx = center_dx + static_cast<double>(ix) * step_dx;
-    for (int iy = -dy_steps; iy <= dy_steps; ++iy) {
+    for (int iy = min_iy; iy <= max_iy; ++iy) {
       const double dy = center_dy + static_cast<double>(iy) * step_dy;
-      for (int it = -yaw_steps; it <= yaw_steps; ++it) {
+      for (int it = min_it; it <= max_it; ++it) {
         const double yaw = center_yaw + static_cast<double>(it) * step_yaw;
         Candidate candidate{dx, dy, yaw,
                             evaluate(previous, current, grid, point_weights, dx,
                                      dy, yaw, point_stride)};
+        retainMode(candidate, modes);
         if (betterCandidate(candidate, best)) {
-          second = best;
           best = candidate;
-        } else if (betterCandidate(candidate, second)) {
-          second = candidate;
         }
       }
     }
-  }
-  if (second_cost != nullptr) {
-    *second_cost = second.score.cost;
   }
   return best;
 }
@@ -258,7 +313,8 @@ double radialObservability(const ScanFrame& frame) {
 
 }  // namespace
 
-ScanMatcher::ScanMatcher(const ControllerConfig& config) : config_(config) {
+ScanMatcher::ScanMatcher(const ControllerConfig& config) {
+  (void)config;
   point_weights_.reserve(720U);
 }
 
@@ -282,16 +338,22 @@ PoseDelta ScanMatcher::match(const ScanFrame& previous, const ScanFrame& current
   const double prior_yaw = std::isfinite(last_command.angular) ? last_command.angular * dt : 0.0;
   const double initial_dx_half = std::max(0.20, 0.45 * std::abs(prior_dx));
 
-  double second_cost = std::numeric_limits<double>::infinity();
   const std::size_t coarse_stride =
       current.fit_points.size() >= 300U
           ? 4U
           : (current.fit_points.size() >= 210U
                  ? 3U
                  : (current.fit_points.size() >= 120U ? 2U : 1U));
-  Candidate best = searchBox(previous, current, grid, point_weights_, prior_dx, 0.0,
-                             prior_yaw, initial_dx_half, 0.20, 0.30, 0.04, 0.04,
-                             0.035, coarse_stride, &second_cost);
+  const SearchBounds global_bounds{prior_dx - initial_dx_half,
+                                   prior_dx + initial_dx_half,
+                                   -0.20,
+                                   0.20,
+                                   prior_yaw - 0.30,
+                                   prior_yaw + 0.30};
+  ModePool coarse_modes;
+  Candidate best = searchBox(previous, current, grid, point_weights_, prior_dx,
+                             0.0, prior_yaw, global_bounds, 0.04, 0.04,
+                             0.035, coarse_stride, &coarse_modes);
   double dx_step = 0.04;
   double dy_step = 0.04;
   double yaw_step = 0.035;
@@ -299,20 +361,86 @@ PoseDelta ScanMatcher::match(const ScanFrame& previous, const ScanFrame& current
     dx_step /= 4.0;
     dy_step /= 4.0;
     yaw_step /= 4.0;
+    const SearchBounds refinement_bounds{
+        std::max(global_bounds.min_dx, best.dx - dx_step * 4.0),
+        std::min(global_bounds.max_dx, best.dx + dx_step * 4.0),
+        std::max(global_bounds.min_dy, best.dy - dy_step * 4.0),
+        std::min(global_bounds.max_dy, best.dy + dy_step * 4.0),
+        std::max(global_bounds.min_yaw, best.dyaw - yaw_step * 4.0),
+        std::min(global_bounds.max_yaw, best.dyaw + yaw_step * 4.0)};
     best = searchBox(previous, current, grid, point_weights_, best.dx, best.dy,
-                     best.dyaw, dx_step * 4.0, dy_step * 4.0, yaw_step * 4.0,
-                     dx_step, dy_step, yaw_step,
+                     best.dyaw, refinement_bounds, dx_step, dy_step, yaw_step,
                      coarse_stride > static_cast<std::size_t>(refinement + 1)
                          ? coarse_stride - static_cast<std::size_t>(refinement + 1)
                          : 1U,
-                     &second_cost);
+                     nullptr);
   }
 
-  // Search on deterministic subsets, then compute the reported quality from
-  // every available fit point. This keeps the bounded search fast without
-  // overstating confidence from a subsample.
-  best.score = evaluate(previous, current, grid, point_weights_, best.dx, best.dy,
-                        best.dyaw, 1U);
+  // Search on deterministic subsets, then rank the refined winner and every
+  // distinct coarse mode with the identical full-resolution scorer. Keeping
+  // coarse modes prevents a narrow refinement box from erasing a distant,
+  // equally plausible solution in repeated geometry.
+  std::array<Candidate, kModeCapacity + 1U> finalists{};
+  std::size_t finalist_count = 1U;
+  finalists[0] = best;
+  finalists[0].score = evaluate(previous, current, grid, point_weights_, best.dx,
+                                best.dy, best.dyaw, 1U);
+  for (std::size_t index = 0U; index < coarse_modes.size; ++index) {
+    Candidate candidate = coarse_modes.candidates[index];
+    if (sameMode(candidate, best)) {
+      continue;
+    }
+    candidate.score = evaluate(previous, current, grid, point_weights_,
+                               candidate.dx, candidate.dy, candidate.dyaw, 1U);
+    finalists[finalist_count++] = candidate;
+  }
+
+  std::size_t best_index = 0U;
+  for (std::size_t index = 1U; index < finalist_count; ++index) {
+    if (betterCandidate(finalists[index], finalists[best_index])) {
+      best_index = index;
+    }
+  }
+  best = finalists[best_index];
+  double second_cost = std::numeric_limits<double>::infinity();
+  for (std::size_t index = 0U; index < finalist_count; ++index) {
+    if (index == best_index || sameMode(finalists[index], best)) {
+      continue;
+    }
+    second_cost = std::min(second_cost, finalists[index].score.cost);
+  }
+
+  // Probe the complete bounded interval along each axis at full resolution.
+  // This cheaply catches corridor periodicity and rotational symmetries that
+  // fall between coarse 3-D grid samples, while keeping both competing costs
+  // on exactly the same point set.
+  const auto consider_alternative = [&](double dx, double dy, double yaw) {
+    Candidate candidate{dx, dy, yaw,
+                        evaluate(previous, current, grid, point_weights_, dx, dy,
+                                 yaw, 1U)};
+    if (!sameMode(candidate, best)) {
+      second_cost = std::min(second_cost, candidate.score.cost);
+    }
+  };
+  const int min_yaw_bin = static_cast<int>(std::ceil(
+      (global_bounds.min_yaw - prior_yaw) / grid.increment - 1e-12));
+  const int max_yaw_bin = static_cast<int>(std::floor(
+      (global_bounds.max_yaw - prior_yaw) / grid.increment + 1e-12));
+  for (int bin = min_yaw_bin; bin <= max_yaw_bin; ++bin) {
+    consider_alternative(best.dx, best.dy,
+                         prior_yaw + static_cast<double>(bin) * grid.increment);
+  }
+  const int min_dx_bin = static_cast<int>(std::ceil(
+      (global_bounds.min_dx - prior_dx) / 0.04 - 1e-12));
+  const int max_dx_bin = static_cast<int>(std::floor(
+      (global_bounds.max_dx - prior_dx) / 0.04 + 1e-12));
+  for (int bin = min_dx_bin; bin <= max_dx_bin; ++bin) {
+    consider_alternative(prior_dx + static_cast<double>(bin) * 0.04, best.dy,
+                         best.dyaw);
+  }
+  for (int bin = -5; bin <= 5; ++bin) {
+    consider_alternative(best.dx, static_cast<double>(bin) * 0.04, best.dyaw);
+  }
 
   if (!std::isfinite(best.score.cost) || std::hypot(best.dx, best.dy) > 0.9 ||
       std::abs(best.dyaw) > 0.7) {

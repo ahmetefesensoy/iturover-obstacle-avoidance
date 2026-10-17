@@ -99,6 +99,46 @@ ScanFrame constantFrame(double range) {
   return frame;
 }
 
+ScanFrame radialPatternFrame(double residual, std::size_t exact_rays = 0U) {
+  ScanFrame frame;
+  frame.conservative_ranges.reserve(kRayCount);
+  frame.fit_points.reserve(kRayCount);
+  frame.collision_points.reserve(kRayCount);
+  for (std::size_t bin = 0; bin < kRayCount; ++bin) {
+    const double bearing = -kPi + kTwoPi * static_cast<double>(bin) /
+                                      static_cast<double>(kRayCount);
+    const double base = 3.0 + 0.45 * std::sin(5.0 * bearing) +
+                        0.22 * std::cos(11.0 * bearing);
+    const double range = base + (bin < exact_rays ? 0.0 : residual);
+    frame.conservative_ranges.push_back(range);
+    const ScanPoint point{Vec2{range * std::cos(bearing),
+                               range * std::sin(bearing)},
+                          range, bearing, true};
+    frame.fit_points.push_back(point);
+    frame.collision_points.push_back(point);
+  }
+  return frame;
+}
+
+ScanFrame periodicFrame() {
+  ScanFrame frame;
+  frame.conservative_ranges.reserve(kRayCount);
+  frame.fit_points.reserve(kRayCount);
+  frame.collision_points.reserve(kRayCount);
+  for (std::size_t bin = 0; bin < kRayCount; ++bin) {
+    const double bearing = -kPi + kTwoPi * static_cast<double>(bin) /
+                                      static_cast<double>(kRayCount);
+    const double range = 3.0 + 0.5 * std::cos(24.0 * bearing);
+    frame.conservative_ranges.push_back(range);
+    const ScanPoint point{Vec2{range * std::cos(bearing),
+                               range * std::sin(bearing)},
+                          range, bearing, true};
+    frame.fit_points.push_back(point);
+    frame.collision_points.push_back(point);
+  }
+  return frame;
+}
+
 TEST(ScanMatcher, RecoversNoisyForwardMotion) {
   const std::vector<Vec2> world = corridorWorld();
   const ScanFrame previous = rasterize(world, 0.0, 0.0, 0.0, 0.004, 11U);
@@ -156,21 +196,64 @@ TEST(ScanMatcher, RejectsFewerThanSixtyInliers) {
   EXPECT_DOUBLE_EQ(delta.confidence, 0.0);
 }
 
-TEST(ScanMatcher, ResetLeavesNoMotionBias) {
+TEST(ScanMatcher, ResetPreservesStatelessEstimate) {
   const std::vector<Vec2> world = corridorWorld();
   const ScanFrame previous = rasterize(world, 0.0, 0.0, 0.0, 0.0, 31U);
   const ScanFrame moved = rasterize(world, 0.32, 0.06, 0.08, 0.0, 32U);
-  const ScanFrame stationary = rasterize(world, 0.0, 0.0, 0.0, 0.0, 33U);
   ScanMatcher matcher(ControllerConfig{});
-  ASSERT_GT(matcher.match(previous, moved, Command{3.2, 0.8}, 0.1).confidence,
-            0.6);
+  const PoseDelta before_reset =
+      matcher.match(previous, moved, Command{3.2, 0.8}, 0.1);
+  ASSERT_GT(before_reset.confidence, 0.6);
 
   matcher.reset();
-  const PoseDelta delta = matcher.match(previous, stationary, Command{}, 0.1);
+  const PoseDelta after_reset =
+      matcher.match(previous, moved, Command{3.2, 0.8}, 0.1);
 
-  EXPECT_NEAR(delta.dx, 0.0, 0.02);
-  EXPECT_NEAR(delta.dy, 0.0, 0.02);
-  EXPECT_NEAR(delta.dyaw, 0.0, 0.015);
+  EXPECT_DOUBLE_EQ(before_reset.dx, after_reset.dx);
+  EXPECT_DOUBLE_EQ(before_reset.dy, after_reset.dy);
+  EXPECT_DOUBLE_EQ(before_reset.dyaw, after_reset.dyaw);
+  EXPECT_DOUBLE_EQ(before_reset.confidence, after_reset.confidence);
+}
+
+TEST(ScanMatcher, IgnoresPointsProjectedBeyondSensorRange) {
+  const ScanFrame previous = constantFrame(9.9);
+  ScanFrame current;
+  current.conservative_ranges.assign(kRayCount,
+                                     std::numeric_limits<double>::infinity());
+  for (std::size_t index = 0; index < 60U; ++index) {
+    const double bearing = -0.05 + 0.10 * static_cast<double>(index) / 59.0;
+    constexpr double range = 9.7;
+    current.fit_points.push_back(
+        ScanPoint{Vec2{range * std::cos(bearing), range * std::sin(bearing)},
+                  range, bearing, true});
+  }
+  ScanMatcher matcher(ControllerConfig{});
+
+  const PoseDelta delta = matcher.match(previous, current, Command{6.0, 0.0}, 0.1);
+
+  EXPECT_DOUBLE_EQ(delta.confidence, 0.0);
+}
+
+TEST(ScanMatcher, MediumResidualsContributeToConfidenceRms) {
+  const ScanFrame previous = radialPatternFrame(0.0);
+  const ScanFrame current = radialPatternFrame(0.12, 24U);
+  ScanMatcher matcher(ControllerConfig{});
+
+  const PoseDelta delta = matcher.match(previous, current, Command{}, 0.1);
+
+  EXPECT_LT(delta.confidence, 0.55);
+}
+
+TEST(ScanMatcher, RepeatedAngularStructureKeepsAmbiguityPenalty) {
+  const ScanFrame repeated = periodicFrame();
+  ScanMatcher matcher(ControllerConfig{});
+
+  const PoseDelta delta = matcher.match(repeated, repeated, Command{}, 0.1);
+
+  // With perfect residuals and all rays inliers, the first two confidence
+  // terms sum to 0.80. A repeated remote mode must contribute no separation
+  // bonus (the remaining 0.20).
+  EXPECT_LE(delta.confidence, 0.81);
 }
 
 TEST(ScanMatcher, RejectsImplausiblePerScanJump) {

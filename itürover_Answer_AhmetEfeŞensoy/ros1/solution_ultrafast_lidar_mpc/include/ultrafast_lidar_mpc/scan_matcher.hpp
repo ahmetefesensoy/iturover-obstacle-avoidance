@@ -16,7 +16,6 @@ class ScanMatcher {
   void reset();
 
  private:
-  ControllerConfig config_;
   std::vector<double> point_weights_;
 };
 
