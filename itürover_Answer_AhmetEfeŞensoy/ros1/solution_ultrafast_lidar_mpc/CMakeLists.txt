@@ -26,6 +26,7 @@ include_directories(
 add_library(ultrafast_lidar_core
   src/config.cpp
   src/planner.cpp
+  src/race_controller.cpp
   src/rolling_grid.cpp
   src/safety_filter.cpp
   src/scan_geometry.cpp
@@ -74,5 +75,10 @@ if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(test_safety_filter test/test_safety_filter.cpp)
   if(TARGET test_safety_filter)
     target_link_libraries(test_safety_filter ultrafast_lidar_core)
+  endif()
+
+  catkin_add_gtest(test_race_controller test/test_race_controller.cpp)
+  if(TARGET test_race_controller)
+    target_link_libraries(test_race_controller ultrafast_lidar_core)
   endif()
 endif()
