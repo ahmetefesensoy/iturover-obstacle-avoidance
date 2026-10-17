@@ -29,6 +29,7 @@ log/
 logs/
 .catkin_workspace
 .catkin_tools/
+.worktrees/
 *.pyc
 
 # CMake / colcon ara çıktıları
